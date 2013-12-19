@@ -1,0 +1,14 @@
+<ivysettings>
+    <settings defaultResolver="chained" />
+    <resolvers>
+        <chain name="chained" returnFirst="true">
+            <ibiblio name="ibiblio" />
+            <ibiblio name="central" m2compatible="true"/>   
+            <ibiblio 
+               name="snapshots" 
+               m2compatible="true" 
+               pattern="[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]"
+               root="https://oss.sonatype.org/content/repositories/snapshots/"/>
+        </chain>
+    </resolvers>
+</ivysettings>
