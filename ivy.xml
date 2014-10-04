@@ -8,6 +8,9 @@
         <dependency org="org.eclipse.jetty" name="jetty-servlet" rev="7.5.+"/>
         <dependency org="org.eclipse.jetty" name="jetty-websocket" rev="7.5.+"/>
         <dependency org="org.eclipse.jetty" name="jetty-xml" rev="7.5.+"/>
+        <!-- requires oberhamsi/jetty-eventsource-servlet 1.0.1-SNAPSHOT
+        <dependency org="org.eclipse.jetty" name="jetty-eventsource-servlet" rev="1.0.+"/>
+        -->
         <dependency org="javax.servlet" name="servlet-api" rev="2.5"/>
         <!-- logging -->
         <dependency org="org.slf4j" name="slf4j-api" rev="1.6.+"/>

@@ -6,12 +6,160 @@ var log = require('ringo/logging').getLogger(module.id);
 var system = require('system');
 var {JavaEventEmitter} = require('ringo/events');
 var {WebSocket, WebSocketServlet} = org.eclipse.jetty.websocket;
+var {EventSource, EventSourceServlet} = org.eclipse.jetty.servlets;
 
 export('Server', 'main', 'init', 'start', 'stop', 'destroy');
 
 var options,
     server,
     started = false;
+
+/**
+ * WebSocket is an event emitter that supports the
+ * following events:
+ *
+ *  * **open**: called when a new websocket connection is accepted
+ *  * **message**: Called with a complete text message when all fragments have been received.
+ *  * **close**: called when an established websocket connection closes
+ *
+ * @name WebSocket
+ */
+var WebSocketWrapper = function() {
+    /**
+     * Closes the WebSocket connection.
+     * @name WebSocket.instance.close
+     * @function
+     */
+    this.close = function() {
+        if (conn) {
+            conn.disconnect();
+        }
+    };
+    /**
+     * Send a string over the WebSocket.
+     * @param {String} msg a string
+     * @name WebSocket.instance.send
+     * @function
+     */
+    this.send = function(msg) {
+        if (conn) {
+            conn.sendMessage(msg);
+        }
+    };
+
+    /**
+     * Send a byte array over the WebSocket.
+     * @param {ByteArray} bytearray The byte array to send
+     * @param {Number} offset Optional offset (defaults to zero)
+     * @param {Number} length Optional length (defaults to the
+     * length of the byte array)
+     * @name WebSocket.instance.sendBinary
+     * @function
+     */
+    this.sendBinary = function(bytearray, offset, length) {
+        if (conn) {
+            offset = parseInt(offset, 10) || 0;
+            length = parseInt(length, 10) || bytearray.length;
+            conn.sendMessage(bytearray, offset, length);
+        }
+    };
+
+    /**
+     * Check whether the WebSocket is open.
+     * @name WebSocket.instance.isOpen
+     * @return {Boolean} true if the connection is open
+     * @function
+     */
+    this.isOpen = function() {
+        return conn && conn.isOpen();
+    };
+
+    /** @ignore **/
+    this._setConnection = function(connection) {
+        conn = connection;
+    }
+
+    var conn = null;
+
+    return this;
+};
+/**
+ * Provides support for WebSockets in the HTTP server.
+ *
+ * EventSource is an event emitter that supports the
+ * following events:
+ *
+ *  * **open**: called when a new websocket connection is accepted
+ *  * **close**: called when an established websocket connection closes
+ * @name EventSource
+ *
+ */
+var EventSourceWrapper = function() {
+    /**
+     * Closes the EventSource connection.
+     * @name EventSource.instance.close
+     */
+    this.close = function() {
+        if (conn) {
+            conn.close();
+        }
+    };
+    /**
+     * Send a default event to the client
+     * @param {String} msg a string
+     * @name EventSource.instance.data
+     */
+    this.data = function(msg) {
+        if (conn) {
+            try {
+                conn.data(msg);
+            } catch (e) {
+                conn = null;
+                this.emit("close");
+            }
+        }
+    }
+    /**
+     * Send a named event
+     * @param {String} name a string
+     * @param {String} msg a string
+     * @name EventSource.instance.event
+     */
+    this.event = function(name, msg) {
+        if (conn) {
+            try {
+                conn.event(name, msg);
+            } catch (e) {
+                conn = null;
+                this.emit("close");
+            }
+        }
+    }
+    /**
+     * Send a named event
+     * @param {String} name a string
+     * @param {String} msg a string
+     * @name EventSource.instance.comment
+     */
+    this.comment = function(msg) {
+        if (conn) {
+            try {
+                conn.event(name, msg);
+            } catch (e) {
+                conn = null;
+                this.emit("close");
+            }
+        }
+    }
+
+    /** @ignore **/
+    this._setConnection = function(connection) {
+        conn = connection;
+    }
+    var conn = null;
+
+    return this;
+};
 
 /**
  * Create a Jetty HTTP server with the given options. The options may
@@ -203,78 +351,14 @@ function Server(options) {
                 this.addServlet(path, new WebSocketServlet({
                     doWebSocketConnect : function(request, protocol) {
                         log.debug("new websocket");
-
-                        var conn;
-                        /**
-                         * Provides support for WebSockets in the HTTP server.
-                         *
-                         * WebSocket is an event emitter that supports the
-                         * following events:
-                         *
-                         *  * **open**: called when a new websocket connection is accepted
-                         *  * **message**: Called with a complete text message when all fragments have been received.
-                         *  * **close**: called when an established websocket connection closes
-                         *
-                         * @name WebSocket
-                         */
-                        var socket = {
-                            /**
-                             * Closes the WebSocket connection.
-                             * @name WebSocket.instance.close
-                             * @function
-                             */
-                            close: function() {
-                                if (conn) {
-                                    conn.disconnect();
-                                }
-                            },
-                            /**
-                             * Send a string over the WebSocket.
-                             * @param {String} msg a string
-                             * @name WebSocket.instance.send
-                             * @function
-                             */
-                            send: function(msg) {
-                                if (conn) {
-                                    conn.sendMessage(msg);
-                                }
-                            },
-
-                            /**
-                             * Send a byte array over the WebSocket.
-                             * @param {ByteArray} bytearray The byte array to send
-                             * @param {Number} offset Optional offset (defaults to zero)
-                             * @param {Number} length Optional length (defaults to the
-                             * length of the byte array)
-                             * @name WebSocket.instance.sendBinary
-                             * @function
-                             */
-                            sendBinary: function(bytearray, offset, length) {
-                                if (conn) {
-                                    offset = parseInt(offset, 10) || 0;
-                                    length = parseInt(length, 10) || bytearray.length;
-                                    conn.sendMessage(bytearray, offset, length);
-                                }
-                            },
-
-                            /**
-                             * Check whether the WebSocket is open.
-                             * @name WebSocket.instance.isOpen
-                             * @return {Boolean} true if the connection is open
-                             * @function
-                             */
-                            isOpen: function() {
-                                return conn && conn.isOpen();
-                            }
-
-                        };
+                        var socket = new WebSocketWrapper();
 
                         // make socket a java event-emitter (mixin)
                         JavaEventEmitter.call(socket, [WebSocket.OnTextMessage,
                                                        WebSocket.OnBinaryMessage]);
 
                         socket.addListener("open", function(connection) {
-                            conn = connection;
+                            socket._setConnection(connection);
                         });
 
                         if (typeof onconnect === "function") {
@@ -284,6 +368,38 @@ function Server(options) {
                         return socket.impl;
                     }
                 }));
+            },
+            /**
+             * Start accepting EventSource connections in this context context.
+             *
+             * @param {String} path The URL path on which to accept EventSource connections
+             * @param {Function} onconnect a function called for each new EventSource connection
+             *        with the EventSource object as argument.
+             * @since 0.8
+             * @see #WebSocket
+             * @name Context.instance.addEventSource
+             */
+            addEventSource: function(path, onconnect, initParams) {
+                log.info("Starting eventsource support");
+                this.addServlet(path, new EventSourceServlet({
+                    newEventSource : function(request) {
+                        log.debug("new eventsource");
+                        var socket = new EventSourceWrapper();
+
+                        // make socket a java event-emitter (mixin)
+                        JavaEventEmitter.call(socket, [EventSource]);
+
+                        socket.addListener("open", function(connection) {
+                            socket._setConnection(connection);
+                        });
+
+                        if (typeof onconnect === "function") {
+                            onconnect(socket, request);
+                        }
+
+                        return socket.impl;
+                    }
+                }, initParams));
             }
         };
     };
